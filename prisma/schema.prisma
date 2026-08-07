@@ -1,0 +1,73 @@
+// AI Product Manager — Prisma Schema
+// 数据模型设计参考: z-AIPM/doc/product-design.md 三、数据模型
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===== Project（项目）=====
+model Project {
+  id          String   @id @default(cuid())
+  name        String // "英语学习App"
+  description String // "面向大学生的AI英语学习应用"
+  status      String   @default("in_progress") // draft | in_progress | completed
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  documents Document[]
+  agentLogs AgentLog[]
+}
+
+// ===== Document（文档 — 一个 Project 下多种文档）=====
+model Document {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // type: "prd" | "user_persona" | "competitor_analysis" | "feature_flow" | "roadmap"
+  type   String
+  title  String
+  status String @default("pending") // pending | generating | review | approved
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sections Section[]
+
+  @@unique([projectId, type])
+}
+
+// ===== Section（章节 — 一个 Document 下多个章节）=====
+model Section {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  title   String // "2. 市场分析"
+  content String // Markdown 格式
+  order   Int    @default(0)
+  status  String @default("draft") // draft | review | approved
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ===== AgentLog（Agent 执行日志 — 展示思考过程用）=====
+model AgentLog {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  agentName String // "SupervisorAgent" | "ResearchAgent" | "WriterAgent" | "ReviewerAgent"
+  action    String // "route" | "search" | "generate" | "review"
+  input     String // 输入描述
+  output    String // 输出摘要
+  toolCalls Json? // [{ tool: "tavily_search", query: "..." }]
+
+  createdAt DateTime @default(now())
+}
