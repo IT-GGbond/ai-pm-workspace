@@ -44,8 +44,20 @@ export async function researchNode(state: StateType) {
 
   const results: ResearchResult[] = await Promise.all(
     searchTasks.map(async (task) => {
-      console.log(`   搜索: "${task.description}"`);
-      const sources = await searchCompetitors(task.description);
+      // === 查询优化: 中文 → 英文搜索词（Tavily 中文查询返回 0 结果）===
+      let searchQuery = task.description;
+      if (hasLLM()) {
+        const optimized = await generate(
+          "你是一个搜索查询优化专家。只输出 5-15 个英文单词的搜索查询，不要其他内容。",
+          `将以下中文任务描述转为英文搜索查询（用于 Tavily Search API）: "${task.description}"`
+        );
+        if (optimized?.trim()) {
+          searchQuery = optimized.trim();
+        }
+      }
+
+      console.log(`   搜索: "${searchQuery}"`);
+      const sources = await searchCompetitors(searchQuery);
       console.log(`   → 找到 ${sources.length} 条结果，LLM 摘要中...`);
 
       const summary = hasLLM()
