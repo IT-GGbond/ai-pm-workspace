@@ -323,7 +323,8 @@ export function WorkspaceShell({ projectId, initialRequest, initialProject }: Wo
         </aside>
 
         {/* 中: 文档渲染 */}
-        <main className="flex min-w-0 flex-1 flex-col">
+        {/* overflow-y-auto: 中间区独立滚动，长文档不会被外层 h-dvh overflow-hidden 裁剪 */}
+        <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
           <DocumentView doc={currentType ? docs[currentType] : undefined} />
         </main>
 

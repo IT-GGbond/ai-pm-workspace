@@ -52,11 +52,11 @@ export async function reviewerNode(state: StateType) {
     try {
       const parsed = await structuredModel.invoke([
         new SystemMessage(
-          "你是产品文档审查员。宽容务实，只关注严重质量问题（空壳标题、逻辑矛盾、缺核心章节）。不纠结格式/表格/排序/口语化等细节。",
+          "你是产品文档审查员。默认通过，只有存在严重缺陷（空壳标题、核心章节缺失、关键数据自相矛盾）才驳回。宁可放过小的不完美，也不要因为细节反复重写——重写消耗大量 token。",
         ),
         new HumanMessage(
           `检查文档「${doc.title}」质量:\n\n${
-            doc.sections.map(s => `### ${s.title}\n${s.content.slice(0, 500)}`).join("\n\n")
+            doc.sections.map(s => `### ${s.title}\n${s.content.slice(0, 300)}`).join("\n\n")
           }`,
         ),
       ]);
@@ -73,7 +73,8 @@ export async function reviewerNode(state: StateType) {
   result.issues.forEach(i => console.log(`     - ${i}`));
 
   const newAttempts = result.passed ? 0 : state.rewriteAttempts + 1;
-  const maxAttempts = state.maxRewriteAttempts || 3;
+  // 默认 1（state.ts 定义）: 一次自动重试，仍不通过就强制人工审阅
+  const maxAttempts = state.maxRewriteAttempts || 1;
 
   if (result.passed) {
     console.log("   → 提交用户审阅");

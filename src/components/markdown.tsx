@@ -5,6 +5,7 @@
 // 文档正文用衬线栈（Georgia + 中文宋体回退），强化「纸面文档」质感
 
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm"; // GFM 插件: 让 | 语法表格按 <table> 渲染（默认 react-markdown 不支持表格）
 import type { Components } from "react-markdown";
 import { cn } from "@/lib/utils";
 
@@ -102,7 +103,9 @@ export function Markdown({ content, className }: MarkdownProps) {
         className,
       )}
     >
-      <ReactMarkdown components={mdComponents}>{content}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+        {content}
+      </ReactMarkdown>
     </div>
   );
 }
