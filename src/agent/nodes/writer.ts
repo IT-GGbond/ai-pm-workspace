@@ -89,8 +89,10 @@ export async function writerNode(state: StateType) {
   const existing = state.documents[docType];
 
   // === 增量修改（用户反馈 或 Reviewer 驳回重写）===
-  const isRetry = state.rewriteAttempts > 0 && state.reviewIssues.length > 0;
-  if (state.userFeedback || isRetry) {
+  // 防御: existing 不存在时走新生成。此场景出现在状态穿越（如强制人工后
+  // 残留 reviewIssues 导致下一篇误判 isRetry），避免读 undefined.sections 崩溃。
+  const isRetry = (state.rewriteAttempts > 0 && state.reviewIssues.length > 0) && !!existing;
+  if ((state.userFeedback || isRetry) && existing) {
     const feedback = state.userFeedback ?? `Reviewer 驳回:\n${state.reviewIssues.map((s, i) => `${i + 1}. ${s}`).join("\n")}`;
     console.log(`   模式: 增量修改 ("${feedback.slice(0, 60)}...")`);
 

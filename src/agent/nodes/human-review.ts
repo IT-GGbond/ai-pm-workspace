@@ -54,6 +54,10 @@ export async function humanReviewNode(state: StateType) {
     return {
       documents: { [docType]: { ...doc, status: "approved" as const } },
       reviewPassed: true,
+      // 重置质量计数: 上一篇文档的 reviewer 驳回信息不能泄漏到下一篇，
+      // 否则 writer 会误判 isRetry 并尝试读一个尚未生成的文档而崩溃
+      reviewIssues: [],
+      rewriteAttempts: 0,
       userFeedback: null,
       nextAgent: "supervisor",
     };

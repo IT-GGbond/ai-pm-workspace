@@ -239,10 +239,13 @@ export function WorkspaceShell({ projectId, initialRequest, initialProject }: Wo
     }
 
     if (initialProject.status === "in_progress") {
-      const approved = initialProject.documents
-        .filter(d => d.status === "approved")
+      // 中断点推断: 逐篇 HITL 里，analyze 首轮生成 PRD 后停在 human_review，
+      // 此时该文档状态是 "review"（生成完毕等用户审阅），不是 approved/pending。
+      // 所以优先找最新一篇 review 文档；没有 review 才退回到 pending（极端情况）。
+      const inReview = initialProject.documents
+        .filter(d => d.status === "review")
         .sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt))[0];
-      const target = approved ?? initialProject.documents.find(d => d.status === "pending");
+      const target = inReview ?? initialProject.documents.find(d => d.status === "pending");
       if (target) {
         setInterrupt({
           documentType: target.type ?? null,
