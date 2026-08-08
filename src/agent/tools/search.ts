@@ -1,10 +1,9 @@
 // agent/tools/search.ts — Tavily 竞品搜索工具
-// M1 阶段: 裸 fetch 调用，M2+ 封装为 MCP Server
-// 无 API Key 时返回 mock 搜索结果
+// 使用 @langchain/tavily 官方包，替代手写 fetch
+// TavilySearch 是 StructuredTool，自动读取 TAVILY_API_KEY
+// 无 Key 时降级 mock，不抛异常
 
 import type { ResearchSource } from "../state";
-
-const TAVILY_API = "https://api.tavily.com/search";
 
 // ===== Mock 搜索结果 =====
 
@@ -29,46 +28,32 @@ function mockSearch(query: string): ResearchSource[] {
 }
 
 // ===== 真实 Tavily 搜索 =====
+// 懒加载: 有 TAVILY_API_KEY 时才 import，避免无 Key 时抛异常
 
-async function realSearch(
-  query: string,
-  maxResults: number = 5,
-): Promise<ResearchSource[]> {
-  const res = await fetch(TAVILY_API, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      api_key: process.env.TAVILY_API_KEY,
-      query,
-      search_depth: "basic",
-      max_results: maxResults,
-    }),
-  });
+async function tavilySearch(query: string): Promise<ResearchSource[]> {
+  // 动态 import 避免无 Key 时构造器抛异常
+  const { TavilySearch } = await import("@langchain/tavily");
+  const tool = new TavilySearch({ maxResults: 5, searchDepth: "basic" });
+  const result = await tool.invoke({ query });
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Tavily 搜索失败 (${res.status}): ${err}`);
-  }
-
-  const data = await res.json();
-  return (data.results || []).map((r: { title: string; url: string; content: string }) => ({
+  // TavilySearch.invoke() 返回 string (JSON) 或对象
+  const parsed = typeof result === "string" ? JSON.parse(result) : result;
+  const items = Array.isArray(parsed) ? parsed : (parsed.results || []);
+  return items.map((r: { title: string; url: string; content: string }) => ({
     title: r.title,
     url: r.url,
-    snippet: r.content,
+    snippet: r.content || "",
   }));
 }
 
-// ===== 统一搜索入口 =====
+// ===== 统一入口 =====
 
-export async function searchCompetitors(
-  query: string,
-  maxResults: number = 5,
-): Promise<ResearchSource[]> {
+export async function searchCompetitors(query: string): Promise<ResearchSource[]> {
   if (process.env.TAVILY_API_KEY) {
     try {
-      return await realSearch(query, maxResults);
+      return await tavilySearch(query);
     } catch (err) {
-      console.warn(`Tavily 搜索失败，降级为 mock: ${err}`);
+      console.warn("Tavily 搜索失败，降级 mock:", (err as Error).message);
     }
   }
   return mockSearch(query);
