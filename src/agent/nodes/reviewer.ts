@@ -3,8 +3,9 @@
 // 参考: z-AIPM/doc/agent-architecture.md 3.4 Reviewer Agent
 
 import { z } from "zod";
+import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import type { StateType, AgentDocument } from "../state";
-import { generate, hasLLM } from "../llm";
+import { createStructuredModel } from "../llm";
 
 // ===== Zod Schema: 结构化审查结果 =====
 
@@ -44,32 +45,24 @@ export async function reviewerNode(state: StateType) {
   const doc = state.documents[docType];
   console.log(`\n🔎 [Reviewer] 审查: ${docType} (${doc.sections.length} 章节)`);
 
-  // 执行审查（Zod 结构化输出）
+  // 执行审查（withStructuredOutput — thinking 已通过 modelKwargs 关闭）
   let result: ReviewResult;
-  if (hasLLM()) {
+  const structuredModel = createStructuredModel(ReviewResultSchema);
+  if (structuredModel) {
     try {
-      const text = await generate(
-        "你是严格的产品文档审查员。只返回 JSON，不返回其他内容。",
-        `检查文档质量，返回 JSON: {"passed": true/false, "issues": ["问题描述"]}
-
-文档: ${doc.title}
-${doc.sections.map(s => `### ${s.title}\n${s.content.slice(0, 500)}`).join("\n\n")}
-
-检查清单:
-1. 至少 3 个数据支撑点？
-2. 逻辑自洽（无矛盾）？
-3. 覆盖必要章节？
-4. 语言专业（非口语化）？
-5. 每章有实质性内容？`
-      );
-      if (text) {
-        const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || text);
-        result = ReviewResultSchema.parse(json);
-      } else {
-        result = mockReview(doc);
-      }
+      const parsed = await structuredModel.invoke([
+        new SystemMessage(
+          "你是产品文档审查员。宽容务实，只关注严重质量问题（空壳标题、逻辑矛盾、缺核心章节）。不纠结格式/表格/排序/口语化等细节。",
+        ),
+        new HumanMessage(
+          `检查文档「${doc.title}」质量:\n\n${
+            doc.sections.map(s => `### ${s.title}\n${s.content.slice(0, 500)}`).join("\n\n")
+          }`,
+        ),
+      ]);
+      result = parsed as ReviewResult;
     } catch (err) {
-      console.warn("   审查解析失败，降级 mock:", (err as Error).message);
+      console.warn("   审查失败，降级 mock:", (err as Error).message);
       result = mockReview(doc);
     }
   } else {

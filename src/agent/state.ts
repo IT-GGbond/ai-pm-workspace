@@ -81,8 +81,14 @@ export const ProjectState = Annotation.Root({
     reducer: (_, replacement) => replacement,
     default: () => [],
   }),
-  rewriteAttempts: Annotation<number>,
-  maxRewriteAttempts: Annotation<number>,
+  rewriteAttempts: Annotation<number>({
+    reducer: (_, x) => x,
+    default: () => 0,
+  }),
+  maxRewriteAttempts: Annotation<number>({
+    reducer: (_, x) => x,
+    default: () => 3,
+  }),
 
   // --- 流程控制 ---
   nextAgent: Annotation<string | null>,

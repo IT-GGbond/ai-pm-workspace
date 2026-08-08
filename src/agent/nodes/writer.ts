@@ -88,23 +88,25 @@ export async function writerNode(state: StateType) {
   console.log(`\n✍️ [Writer] 处理文档: ${docType}`);
   const existing = state.documents[docType];
 
-  // === 增量修改 ===
-  if (state.userFeedback && existing) {
-    console.log(`   模式: 增量修改 ("${state.userFeedback}")`);
+  // === 增量修改（用户反馈 或 Reviewer 驳回重写）===
+  const isRetry = state.rewriteAttempts > 0 && state.reviewIssues.length > 0;
+  if (state.userFeedback || isRetry) {
+    const feedback = state.userFeedback ?? `Reviewer 驳回:\n${state.reviewIssues.map((s, i) => `${i + 1}. ${s}`).join("\n")}`;
+    console.log(`   模式: 增量修改 ("${feedback.slice(0, 60)}...")`);
 
     const newMarkdown = hasLLM()
       ? await generate(
-          "你是产品文档撰写专家。只修改用户反馈相关的部分，其他内容保持完全不变。Markdown 格式。",
-          `修改文档「${DOC_TITLES[docType]}」：
-用户反馈: "${state.userFeedback}"
+          "你是产品文档撰写专家。根据反馈精确修改文档，只改有问题的部分，其余保持不变。Markdown 格式。",
+          `修改文档「${DOC_TITLES[docType]}」:
+反馈: "${feedback}"
 
 当前内容:
 ${existing.sections.map(s => `## ${s.title}\n${s.content}`).join("\n\n")}`
         )
       : null;
 
-    const markdown = newMarkdown || existing.sections.map(s => `## ${s.title}\n${s.content}`).join("\n\n") +
-      `\n\n## 补充内容\n基于反馈「${state.userFeedback}」的补充分析（Mock 模式）。`;
+    const markdown = newMarkdown ?? existing.sections.map(s => `## ${s.title}\n${s.content}`).join("\n\n") +
+      `\n\n## 补充内容\n基于反馈「${feedback}」的补充分析`;
 
     return {
       documents: { [docType]: { ...existing, sections: parseSections(markdown), status: "review" as const } },

@@ -3,11 +3,12 @@
 
 import { v4 as uuid } from "uuid";
 import { z } from "zod";
+import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import type { StateType, Task } from "../state";
-import { generate, hasLLM } from "../llm";
+import { createStructuredModel } from "../llm";
 
 // ===== Zod Schema: 结构化任务输出 =====
-// 等价 Python 的 Pydantic model，用 withStructuredOutput 确保 LLM 返回合法 JSON
+// 传给 model.withStructuredOutput(schema)，LLM 直接返回已校验的对象，无需 JSON.parse
 
 const TaskSchema = z.object({
   tasks: z.array(
@@ -63,19 +64,16 @@ export async function supervisorNode(state: StateType) {
 
     let tasks: Task[];
     try {
-      if (hasLLM()) {
-        // 用 Zod Schema 约束 LLM 输出
-        const text = await generate(
-          "你是资深产品经理。分析用户需求，输出结构化任务列表（JSON）。",
-          `用户需求: "${state.userRequest}"\n\n返回 JSON 格式: { "tasks": [{ "type": "...", "description": "..." }] }`
-        );
-        if (text) {
-          const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || text);
-          const parsed = TaskSchema.parse(json);
-          tasks = parsed.tasks.map(t => ({ ...t, id: uuid(), status: "pending" as const }));
-        } else {
-          tasks = mockTasks(state.userRequest);
-        }
+      // === withStructuredOutput — thinking 已通过 modelKwargs 关闭 ===
+      const structuredModel = createStructuredModel(TaskSchema);
+      if (structuredModel) {
+        const parsed = await structuredModel.invoke([
+          new SystemMessage(
+            "你是资深产品经理。分析用户需求，输出结构化任务列表。type 必须是这 6 个值之一: research / write_prd / write_persona / write_competitor / write_flow / write_roadmap",
+          ),
+          new HumanMessage(`用户需求: "${state.userRequest}"`),
+        ]);
+        tasks = (parsed as z.infer<typeof TaskSchema>).tasks.map(t => ({ ...t, id: uuid(), status: "pending" as const }));
       } else {
         tasks = mockTasks(state.userRequest);
       }
