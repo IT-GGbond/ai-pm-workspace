@@ -152,5 +152,15 @@ export async function supervisorNode(state: StateType) {
     }
   }
 
-  return {};
+  // === 兜底: phase 异常时尝试恢复 ===
+  // 正常流程不会走到这里（所有 case 已覆盖全部 phase 值）
+  console.warn(`   ⚠️ [Supervisor] 未预期阶段: phase=${state.phase} feedback=${state.userFeedback ? "有" : "无"} tasks=${state.tasks.length}`);
+  if (state.userFeedback) {
+    return { phase: "writing" as const, nextAgent: "writer" };
+  }
+  if (state.tasks.length > 0) {
+    // 有任务但 phase 不对 → 恢复为 writing，让调度逻辑接上
+    return { phase: "writing" as const, nextAgent: "writer" };
+  }
+  return { nextAgent: null };
 }

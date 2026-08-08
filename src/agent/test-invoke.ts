@@ -52,7 +52,7 @@ async function main() {
     // 真实场景中暂停点由前端 ReviewBar 处理
     // input 类型 = app.stream 的第一个参数（普通 state 更新 或 Command）
     type StreamInput = Parameters<typeof app.stream>[0];
-    let input: StreamInput = initialState;
+    let input: StreamInput = initialState as StreamInput;
     let stepCount = 0;
     let reviewCount = 0;
 

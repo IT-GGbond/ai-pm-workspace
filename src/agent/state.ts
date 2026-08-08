@@ -95,7 +95,11 @@ export const ProjectState = Annotation.Root({
 
   // --- 流程控制 ---
   nextAgent: Annotation<string | null>,
-  phase: Annotation<"planning" | "researching" | "writing" | "reviewing" | "done">,
+  phase: Annotation<"planning" | "researching" | "writing" | "reviewing" | "done">({
+    // default overwrite + 默认值 "planning"，避免 undefined 导致状态机静默跳过
+    value: (_, x) => x,
+    default: () => "planning",
+  }),
   // reducer: 各节点追加错误信息
   errors: Annotation<string[]>({
     reducer: (current, update) => [...current, ...update],

@@ -82,7 +82,12 @@ export async function reviewerNode(state: StateType) {
       reviewPassed: true,
       reviewIssues: [],
       rewriteAttempts: 0,
-      documents: { [docType]: { ...doc, status: "approved" as const } },
+      // 注意: 这里不能把文档标成 approved —— 审批权在 human_review 节点。
+      // 若在此标 approved，DB 里文档在人工审阅前就变成"已通过"，
+      // 前端 router.replace 到 /workspace/:id 按 DB 恢复现场时找不到 review 态文档
+      // → 审核栏消失、页面卡死（bug: reviewer 抢了人工审批的标记）。
+      // 保持 review 态，等用户在 human_review 点"确认通过"再置 approved。
+      documents: { [docType]: { ...doc, status: "review" as const } },
     };
   }
 

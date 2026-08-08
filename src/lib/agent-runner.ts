@@ -106,8 +106,18 @@ function getInterruptPayload(update: unknown): {
 function summarizeUpdate(node: string, update: Record<string, unknown>): NodeSummary | null {
   switch (node) {
     case "supervisor": {
+      // 区分「拆解任务」(首次 planning) 与「同步进度」(writing 阶段每次调度)
       if (Array.isArray(update.tasks)) {
-        return { input: "分析用户需求", output: `拆解 ${update.tasks.length} 个任务` };
+        // phase 被设置 = 首次拆解（case 1: planning → researching）
+        if (update.phase) {
+          return { input: "分析用户需求", output: `拆解 ${update.tasks.length} 个任务` };
+        }
+        // 否则是 writing 阶段的进度同步（case 3），不叫"拆解"
+        const doneCount = (update.tasks as Array<{ status?: string }>).filter(
+          (t) => t.status === "completed",
+        ).length;
+        const nextDoc = typeof update.currentDocument === "string" ? update.currentDocument : "";
+        return { input: "调度决策", output: `→ ${nextDoc || "同步进度"} (${doneCount}/${update.tasks.length} 完成)` };
       }
       if (update.nextAgent) {
         return { input: "调度决策", output: `下一步 → ${String(update.nextAgent)}` };
