@@ -4,11 +4,11 @@
 
 import { StateGraph, START, END, MemorySaver } from "@langchain/langgraph";
 import { ProjectState } from "./state";
-import type { StateType } from "./state";
 import { supervisorNode } from "./nodes/supervisor";
 import { researchNode } from "./nodes/research";
 import { writerNode } from "./nodes/writer";
 import { reviewerNode } from "./nodes/reviewer";
+import { humanReviewNode } from "./nodes/human-review";
 
 // ===== 路由函数 =====
 
@@ -52,29 +52,6 @@ function reviewerRouter(state: typeof ProjectState.State): string {
 
   console.log(`   [Router] Reviewer → writer (第${rewriteAttempts}次重写)`);
   return "writer";
-}
-
-// ===== Human Review Node =====
-// V1 简化版: 暂停打印日志，M4 接入 interrupt()
-async function humanReviewNode(state: StateType) {
-  const { currentDocument, documents } = state;
-  const doc = currentDocument ? documents[currentDocument] : null;
-
-  console.log("\n👤 [Human Review] ==========================");
-  if (doc) {
-    console.log(`   文档: ${doc.title}`);
-    console.log(`   状态: ${doc.status}`);
-    console.log(`   章节: ${doc.sections.length} 个`);
-    console.log("   ⏸️  等待用户审阅... (M4 接入 interrupt)");
-  }
-  console.log("   =========================================\n");
-
-  // M1 阶段: 直接标记为继续（无实际暂停）
-  return {
-    nextAgent: "supervisor",
-    // 清除审阅状态，Supervisor 会决定下一步
-    reviewPassed: false,
-  };
 }
 
 // ===== 图构建 =====
