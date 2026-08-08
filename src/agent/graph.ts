@@ -4,6 +4,7 @@
 
 import { StateGraph, START, END, MemorySaver } from "@langchain/langgraph";
 import { ProjectState } from "./state";
+import type { StateType } from "./state";
 import { supervisorNode } from "./nodes/supervisor";
 import { researchNode } from "./nodes/research";
 import { writerNode } from "./nodes/writer";
@@ -55,7 +56,7 @@ function reviewerRouter(state: typeof ProjectState.State): string {
 
 // ===== Human Review Node =====
 // V1 简化版: 暂停打印日志，M4 接入 interrupt()
-async function humanReviewNode(state: typeof ProjectState.State) {
+async function humanReviewNode(state: StateType) {
   const { currentDocument, documents } = state;
   const doc = currentDocument ? documents[currentDocument] : null;
 

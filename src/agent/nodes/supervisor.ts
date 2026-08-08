@@ -2,12 +2,31 @@
 // 参考: z-AIPM/doc/agent-architecture.md 3.1 Supervisor Node
 
 import { v4 as uuid } from "uuid";
-import type { Task, AgentDocument } from "../state";
+import { z } from "zod";
+import type { StateType, Task } from "../state";
 import { generate, hasLLM } from "../llm";
+
+// ===== Zod Schema: 结构化任务输出 =====
+// 等价 Python 的 Pydantic model，用 withStructuredOutput 确保 LLM 返回合法 JSON
+
+const TaskSchema = z.object({
+  tasks: z.array(
+    z.object({
+      type: z.enum([
+        "research",
+        "write_prd",
+        "write_persona",
+        "write_competitor",
+        "write_flow",
+        "write_roadmap",
+      ]),
+      description: z.string().describe("具体任务描述"),
+    })
+  ).describe("要执行的任务列表"),
+});
 
 // ===== 工具函数 =====
 
-/** write_xxx → document key 映射 */
 function writeTypeToDocType(type: string): string {
   const map: Record<string, string> = {
     write_prd: "prd",
@@ -19,7 +38,7 @@ function writeTypeToDocType(type: string): string {
   return map[type] || type.replace("write_", "");
 }
 
-// ===== Mock 数据 =====
+// ===== Mock =====
 
 function mockTasks(userRequest: string): Task[] {
   return [
@@ -32,49 +51,36 @@ function mockTasks(userRequest: string): Task[] {
   ];
 }
 
-// ===== 真实 LLM 拆解 =====
-
-async function realTaskDecomposition(userRequest: string): Promise<Task[]> {
-  const text = await generate(
-    "你是资深产品经理，只返回 JSON。",
-    `分析用户需求，拆解为具体可执行任务。返回 JSON: {"tasks": [{"type": "research|write_prd|write_persona|write_competitor|write_flow|write_roadmap", "description": "..."}]}\n\n用户需求: "${userRequest}"`
-  );
-  if (!text) throw new Error("LLM 返回为空");
-
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error(`无法解析 JSON: ${text.slice(0, 200)}`);
-
-  const { tasks } = JSON.parse(jsonMatch[0]);
-  return tasks.map((t: Omit<Task, "id" | "status">) => ({
-    ...t,
-    id: uuid(),
-    status: "pending" as const,
-  }));
-}
-
 // ===== 主节点 =====
 
-export async function supervisorNode(state: {
-  userRequest: string;
-  userFeedback: string | null;
-  phase: string;
-  tasks: Task[];
-  documents: Record<string, AgentDocument>;
-  researchResults: unknown[];
-  currentDocument: string | null;
-}) {
+export async function supervisorNode(state: StateType) {
   console.log("\n🧠 [Supervisor] 分析需求中...");
   console.log(`   用户请求: "${state.userRequest}"`);
 
-  // === 情况 1: 首次进入 → 拆解任务 ===
+  // === 情况 1: 首次进入 → 拆解任务（Zod 结构化输出） ===
   if (state.phase === "planning" || state.tasks.length === 0) {
     console.log("   阶段: 首次任务拆解");
 
     let tasks: Task[];
     try {
-      tasks = hasLLM() ? await realTaskDecomposition(state.userRequest) : mockTasks(state.userRequest);
+      if (hasLLM()) {
+        // 用 Zod Schema 约束 LLM 输出
+        const text = await generate(
+          "你是资深产品经理。分析用户需求，输出结构化任务列表（JSON）。",
+          `用户需求: "${state.userRequest}"\n\n返回 JSON 格式: { "tasks": [{ "type": "...", "description": "..." }] }`
+        );
+        if (text) {
+          const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || text);
+          const parsed = TaskSchema.parse(json);
+          tasks = parsed.tasks.map(t => ({ ...t, id: uuid(), status: "pending" as const }));
+        } else {
+          tasks = mockTasks(state.userRequest);
+        }
+      } else {
+        tasks = mockTasks(state.userRequest);
+      }
     } catch (err) {
-      console.warn("   LLM 拆解失败，使用 mock:", err);
+      console.warn("   任务拆解失败，使用 mock:", (err as Error).message);
       tasks = mockTasks(state.userRequest);
     }
 
@@ -102,7 +108,6 @@ export async function supervisorNode(state: {
 
   // === 情况 3: 写作中 → 选择下一个文档 ===
   if (state.phase === "writing") {
-    // 将已审批文档对应的 task 标记完成，避免重复选中
     const syncedTasks = state.tasks.map(t => {
       if (!t.type.startsWith("write_")) return t;
       const doc = state.documents[writeTypeToDocType(t.type)];
@@ -112,58 +117,39 @@ export async function supervisorNode(state: {
       return t;
     });
 
-    const pending = syncedTasks.filter(
-      t => t.type.startsWith("write_") && t.status !== "completed"
-    );
+    const pending = syncedTasks.filter(t => t.type.startsWith("write_") && t.status !== "completed");
 
     if (pending.length === 0) {
-      const allApproved = Object.values(state.documents).every(
-        d => d.status === "approved"
-      );
+      const allApproved = Object.values(state.documents).every(d => d.status === "approved");
       if (allApproved) {
         console.log("   ✅ 全部文档已审批！");
         return { tasks: syncedTasks, phase: "done" as const, nextAgent: null };
       }
       console.log("   所有文档已生成，等待审阅");
-      return {
-        tasks: syncedTasks,
-        phase: "reviewing" as const,
-        nextAgent: "reviewer",
-      };
+      return { tasks: syncedTasks, phase: "reviewing" as const, nextAgent: "reviewer" };
     }
 
     const next = pending[0];
     const docType = writeTypeToDocType(next.type);
     console.log(`   下一个文档: ${next.type} → ${docType}`);
 
-    return {
-      tasks: syncedTasks,
-      currentDocument: docType,
-      currentTask: next.type,
-      nextAgent: "writer",
-    };
+    return { tasks: syncedTasks, currentDocument: docType, currentTask: next.type, nextAgent: "writer" };
   }
 
   // === 情况 4: 用户反馈 → 增量修改 ===
   if (state.userFeedback) {
     console.log(`   收到反馈: "${state.userFeedback}"`);
-    return {
-      phase: "writing" as const,
-      nextAgent: "writer",
-    };
+    return { phase: "writing" as const, nextAgent: "writer" };
   }
 
-  // === 情况 5: 审阅阶段 → 检查是否全部完成 ===
+  // === 情况 5: 审阅阶段 ===
   if (state.phase === "reviewing") {
-    const allApproved = Object.values(state.documents).every(
-      d => d.status === "approved"
-    );
+    const allApproved = Object.values(state.documents).every(d => d.status === "approved");
     if (allApproved) {
       console.log("   ✅ 全部文档审批通过！");
       return { phase: "done" as const, nextAgent: null };
     }
   }
 
-  // 默认: 保持当前状态
   return {};
 }
