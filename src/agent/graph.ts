@@ -45,7 +45,7 @@ function reviewerRouter(state: typeof ProjectState.State): string {
     return "human_review";
   }
 
-  if (rewriteAttempts >= maxRewriteAttempts) {
+  if (rewriteAttempts > maxRewriteAttempts) {
     console.log(`   [Router] Reviewer → human_review (已达上限 ${maxRewriteAttempts})`);
     return "human_review";
   }

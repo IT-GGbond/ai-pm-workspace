@@ -73,7 +73,7 @@ export async function reviewerNode(state: StateType) {
   result.issues.forEach(i => console.log(`     - ${i}`));
 
   const newAttempts = result.passed ? 0 : state.rewriteAttempts + 1;
-  // 默认 1（state.ts 定义）: 一次自动重试，仍不通过就强制人工审阅
+  // 与 reviewerRouter 的 > 比较对齐: maxRewriteAttempts=1 表示允许 1 次自动重试
   const maxAttempts = state.maxRewriteAttempts || 1;
 
   if (result.passed) {
@@ -91,8 +91,8 @@ export async function reviewerNode(state: StateType) {
     };
   }
 
-  if (newAttempts >= maxAttempts) {
-    console.log(`   → 已达上限 (${maxAttempts}次)，强制人工`);
+  if (newAttempts > maxAttempts) {
+    console.log(`   → 已达上限 (${maxAttempts}次重试)，强制人工`);
     return { reviewPassed: false, reviewIssues: result.issues, rewriteAttempts: newAttempts };
   }
 
