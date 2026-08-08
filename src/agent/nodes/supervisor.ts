@@ -21,7 +21,10 @@ const TaskSchema = z.object({
         "write_flow",
         "write_roadmap",
       ]),
-      description: z.string().describe("具体任务描述"),
+      description: z.string().describe("中文任务描述"),
+      englishQuery: z.string().optional().describe(
+        "research 类型任务的英文搜索查询词（10 个词以内）。Tavily 不支持中文，此字段省去一次额外 LLM 翻译调用"
+      ),
     })
   ).describe("要执行的任务列表"),
 });
@@ -43,7 +46,7 @@ function writeTypeToDocType(type: string): string {
 
 function mockTasks(userRequest: string): Task[] {
   return [
-    { id: uuid(), type: "research", description: `搜索 "${userRequest}" 相关竞品和市场数据`, status: "pending" },
+    { id: uuid(), type: "research", description: `搜索 "${userRequest}" 相关竞品和市场数据`, englishQuery: `${userRequest} competitor analysis market research`, status: "pending" },
     { id: uuid(), type: "write_prd", description: "撰写产品需求文档 (PRD)", status: "pending" },
     { id: uuid(), type: "write_persona", description: "撰写目标用户画像", status: "pending" },
     { id: uuid(), type: "write_competitor", description: "撰写竞品分析报告", status: "pending" },
@@ -69,7 +72,7 @@ export async function supervisorNode(state: StateType) {
       if (structuredModel) {
         const parsed = await structuredModel.invoke([
           new SystemMessage(
-            "你是资深产品经理。分析用户需求，输出结构化任务列表。type 必须是这 6 个值之一: research / write_prd / write_persona / write_competitor / write_flow / write_roadmap",
+            "你是资深产品经理。分析用户需求，输出结构化任务列表。type: research/write_prd/write_persona/write_competitor/write_flow/write_roadmap。research 任务必须附带 englishQuery——用英文关键词描述搜索内容（10词内），Tavily 搜索引擎不支持中文。",
           ),
           new HumanMessage(`用户需求: "${state.userRequest}"`),
         ]);

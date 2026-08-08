@@ -14,7 +14,8 @@ import { Annotation } from "@langchain/langgraph";
 export interface Task {
   id: string;
   type: "research" | "write_prd" | "write_persona" | "write_competitor" | "write_flow" | "write_roadmap";
-  description: string;
+  description: string; // 中文任务描述（展示用）
+  englishQuery?: string; // 英文搜索关键词（research 任务用，省去一次 LLM 翻译调用）
   status: "pending" | "in_progress" | "completed";
 }
 
