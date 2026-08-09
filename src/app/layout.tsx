@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     "输入产品想法，4 个 Agent 协作调研竞品、生成 PRD 与全套产品文档，人机审阅迭代。",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="zh-CN"
