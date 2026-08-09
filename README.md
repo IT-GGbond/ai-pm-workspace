@@ -82,16 +82,6 @@ npx tsx src/agent/visualize.ts
 
 实时流式展示 Agent 思考过程：管线节点逐个亮起、日志流实时更新。
 
-## 设计文档
-
-项目设计文档在 `../z-AIPM/doc/`:
-- [技术选型](../z-AIPM/doc/tech-selection.md)
-- [产品设计](../z-AIPM/doc/product-design.md)
-- [Agent 架构](../z-AIPM/doc/agent-architecture.md)
-- [开发路线图](../z-AIPM/doc/development-roadmap.md)
-- [API 层技术决策](../z-AIPM/doc/m2-tech-decisions.md) (SSE / interrupt / 数据流转)
-- [模拟面试 Q&A](../z-AIPM/doc/interview-qa.md)
-
 ## 部署
 
 ```bash
