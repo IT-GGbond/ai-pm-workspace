@@ -122,3 +122,14 @@ export async function generateStructured<T extends z.ZodTypeAny>(
     return null;
   }
 }
+
+// ===== 日期工具: 注入 LLM prompt，避免搜索时用过时年份 =====
+
+/** 返回中文日期字符串，供各节点注入 SystemMessage */
+export function todayContext(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+  const d = now.getDate();
+  return `${y}年${m}月${d}日`;
+}

@@ -5,7 +5,7 @@ import { v4 as uuid } from "uuid";
 import { z } from "zod";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import type { StateType, Task } from "../state";
-import { createStructuredModel } from "../llm";
+import { createStructuredModel, todayContext } from "../llm";
 
 // ===== Zod Schema: 结构化任务输出 =====
 // 传给 model.withStructuredOutput(schema)，LLM 直接返回已校验的对象，无需 JSON.parse
@@ -72,7 +72,7 @@ export async function supervisorNode(state: StateType) {
       if (structuredModel) {
         const parsed = await structuredModel.invoke([
           new SystemMessage(
-            "你是资深产品经理。分析用户需求，输出结构化任务列表。type: research/write_prd/write_persona/write_competitor/write_flow/write_roadmap。research 任务必须附带 englishQuery——用英文关键词描述搜索内容（10词内），Tavily 搜索引擎不支持中文。",
+            `你是资深产品经理。当前日期: ${todayContext()}。分析用户需求，输出结构化任务列表。type: research/write_prd/write_persona/write_competitor/write_flow/write_roadmap。research 任务必须附带 englishQuery——用英文关键词描述搜索内容（10词内），Tavily 搜索引擎不支持中文。关键词中必须使用当前年份，不要使用过时年份（如 2024）。`,
           ),
           new HumanMessage(`用户需求: "${state.userRequest}"`),
         ]);

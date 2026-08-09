@@ -3,7 +3,7 @@
 
 import type { StateType, ResearchResult } from "../state";
 import { searchCompetitors } from "../tools/search";
-import { generate, hasLLM } from "../llm";
+import { generate, hasLLM, todayContext } from "../llm";
 
 // ===== Mock 摘要 =====
 
@@ -52,8 +52,8 @@ export async function researchNode(state: StateType) {
 
       const summary = hasLLM()
         ? await generate(
-            "你是市场研究专家，擅长从竞品数据中提炼洞察。使用 Markdown 格式输出。",
-            `基于以下搜索结果，为产品需求"${state.userRequest}"总结关键信息：
+            `你是市场研究专家，擅长从竞品数据中提炼洞察。当前日期: ${todayContext()}。使用 Markdown 格式输出。`,
+            `基于以下搜索结果，为产品需求"${state.userRequest}"总结关键信息（注意当前是 ${todayContext()}，过时信息需标注）：
 
 搜索结果：
 ${sources.map((s, i) => `${i + 1}. ${s.title}\n   ${s.snippet}`).join("\n\n")}

@@ -113,7 +113,7 @@ function formatOutput(node: string, data: Record<string, unknown>): string {
     case "reviewer":
       return data.reviewPassed ? "质量审查通过" : `质量问题 ${(data.reviewIssues as unknown[])?.length ?? 0} 项`;
     default:
-      return "节点完成";
+      return "人工审阅节点完成";
   }
 }
 

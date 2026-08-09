@@ -3,7 +3,7 @@
 // 参考: z-AIPM/doc/agent-architecture.md 3.3 Writer Agent
 
 import type { StateType, AgentDocument, DocumentSection } from "../state";
-import { generate, hasLLM } from "../llm";
+import { generate, hasLLM, todayContext } from "../llm";
 
 // ===== 文档类型 → 标题映射 =====
 
@@ -98,7 +98,7 @@ export async function writerNode(state: StateType) {
 
     const newMarkdown = hasLLM()
       ? await generate(
-          "你是产品文档撰写专家。根据反馈精确修改文档，只改有问题的部分，其余保持不变。Markdown 格式。",
+          `你是产品文档撰写专家。当前日期: ${todayContext()}。根据反馈精确修改文档，只改有问题的部分，其余保持不变。Markdown 格式。`,
           `修改文档「${DOC_TITLES[docType]}」:
 反馈: "${feedback}"
 
@@ -121,7 +121,7 @@ ${existing.sections.map(s => `## ${s.title}\n${s.content}`).join("\n\n")}`
 
   const markdown = hasLLM()
     ? await generate(
-        "你是资深产品文档撰写专家。专业易懂的中文，Markdown 格式。每个章节需要数据支撑。",
+        `你是资深产品文档撰写专家。当前日期: ${todayContext()}。专业易懂的中文，Markdown 格式。每个章节需要数据支撑。引用数据时注意时效性，过时信息需标注。`,
         `撰写「${DOC_TITLES[docType]}」。
 用户需求: ${state.userRequest}
 
