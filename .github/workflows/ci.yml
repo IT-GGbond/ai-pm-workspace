@@ -1,0 +1,55 @@
+# CI/CD Pipeline — AI Product Manager
+# 触发: push/PR 到 main 分支
+# 流程: install → typecheck → build → (future: deploy)
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    name: TypeCheck + Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      # 构建时需要 DATABASE_URL 让 Prisma generate 成功
+      # 用假连接串即可，只需要生成 Prisma Client 类型，不需要实际连接
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci_db?schema=public
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+        # npm ci 比 npm install 更快、更严格（基于 lock 文件）
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        # 生成类型定义，不需要实际数据库连接
+
+      - name: Type check
+        run: npx tsc --noEmit
+        # 全量类型检查，发现类型错误即失败
+
+      - name: Build
+        run: npm run build
+        # 生产构建验证，确保 Next.js 能成功打包
+
+      # ----  未配置真实 Key，故暂时跳过 ----
+      # - name: E2E Test
+      #   run: node scripts/e2e-test.mjs
+      #   env:
+      #     DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      #     TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
