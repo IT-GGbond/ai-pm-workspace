@@ -42,11 +42,11 @@ function writeTypeToDocType(type: string): string {
   return map[type] || type.replace("write_", "");
 }
 
-// ===== Mock =====
+// ===== 降级任务列表（LLM 不可用时使用，不含虚假竞品数据） =====
 
-function mockTasks(userRequest: string): Task[] {
+function fallbackTasks(): Task[] {
   return [
-    { id: uuid(), type: "research", description: `搜索 "${userRequest}" 相关竞品和市场数据`, englishQuery: `${userRequest} competitor analysis market research`, status: "pending" },
+    { id: uuid(), type: "research", description: "竞品市场调研", englishQuery: "market research competitor analysis", status: "pending" },
     { id: uuid(), type: "write_prd", description: "撰写产品需求文档 (PRD)", status: "pending" },
     { id: uuid(), type: "write_persona", description: "撰写目标用户画像", status: "pending" },
     { id: uuid(), type: "write_competitor", description: "撰写竞品分析报告", status: "pending" },
@@ -78,11 +78,11 @@ export async function supervisorNode(state: StateType) {
         ]);
         tasks = (parsed as z.infer<typeof TaskSchema>).tasks.map(t => ({ ...t, id: uuid(), status: "pending" as const }));
       } else {
-        tasks = mockTasks(state.userRequest);
+        tasks = fallbackTasks();
       }
     } catch (err) {
       console.warn("   任务拆解失败，使用 mock:", (err as Error).message);
-      tasks = mockTasks(state.userRequest);
+      tasks = fallbackTasks();
     }
 
     console.log(`   拆解出 ${tasks.length} 个任务:`);

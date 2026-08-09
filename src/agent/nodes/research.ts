@@ -5,30 +5,6 @@ import type { StateType, ResearchResult } from "../state";
 import { searchCompetitors } from "../tools/search";
 import { generate, hasLLM, todayContext } from "../llm";
 
-// ===== Mock 摘要 =====
-
-function mockSummary(query: string): string {
-  return `## 调研摘要: ${query}
-
-### 市场概况
-基于对 3 款主流竞品的分析，该细分市场呈现快速增长态势，2026 年市场规模预计达到数百亿元。
-
-### 竞品特点
-1. **竞品 A (市场领导者)**: 拥有最大的用户基数，产品成熟度高，但创新速度放缓
-2. **竞品 B (差异化竞争者)**: 聚焦年轻用户群体，UI/UX 设计出色，但功能深度不足
-3. **竞品 C (新锐产品)**: AI 原生设计，交互体验新颖，但用户规模尚小
-
-### 用户痛点
-- 现有产品学习门槛偏高
-- 个性化推荐不够精准
-- 跨平台体验割裂
-
-### 机会点
-- AI 能力可以显著降低使用门槛
-- 细分人群（如大学生）的定制化需求未被满足
-- 社交+学习的融合模式有创新空间`;
-}
-
 // ===== 主节点 =====
 
 export async function researchNode(state: StateType) {
@@ -69,7 +45,7 @@ ${sources.map((s, i) => `${i + 1}. ${s.title}\n   ${s.snippet}`).join("\n\n")}
       task.status = "completed";
       console.log(`   ✅ 摘要完成`);
 
-      return { query: task.description, sources, summary: summary || mockSummary(task.description) };
+      return { query: task.description, sources, summary: summary || `## 调研摘要: ${task.description}\n\n搜索完成，共 ${sources.length} 条结果。配置 DEEPSEEK_API_KEY 后可生成 AI 摘要。` };
     })
   );
 
