@@ -88,10 +88,9 @@ export const ProjectState = Annotation.Root({
   }),
   maxRewriteAttempts: Annotation<number>({
     reducer: (_, x) => x,
-    // 自动重试上限: 1 次。Reviewer 发现质量问题后 writer 可自动修复 1 次；
-    // 修复后 Reviewer 再次不通过（rewriteAttempts > maxRewriteAttempts）→ 强制人工。
-    // reviewRouter 用 `>` 比较，所以 max=1 表示允许 1 次重试（共 2 次审查机会）。
-    default: () => 1,
+    // 允许 1 次自动重试。第 1 次不通过 → writer 重写 → 第 2 次仍不通过 → 强制人工。
+    // 语义: newAttempts >= max → 强制人工，所以 max=2 表示 1 次重试机会。
+    default: () => 2,
   }),
 
   // --- 流程控制 ---

@@ -73,8 +73,8 @@ export async function reviewerNode(state: StateType) {
   result.issues.forEach(i => console.log(`     - ${i}`));
 
   const newAttempts = result.passed ? 0 : state.rewriteAttempts + 1;
-  // 与 reviewerRouter 的 > 比较对齐: maxRewriteAttempts=1 表示允许 1 次自动重试
-  const maxAttempts = state.maxRewriteAttempts || 1;
+  // reviewerRouter 用 >= 比较: max=2 → 第 1 次失败重试，第 2 次失败才强制人工
+  const maxAttempts = state.maxRewriteAttempts || 2;
 
   if (result.passed) {
     console.log("   → 提交用户审阅");

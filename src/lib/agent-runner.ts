@@ -65,9 +65,14 @@ export async function runAgentStream(
 
       // === 普通节点输出 ===
       const summary = summarizeUpdate(node, update);
-      if (summary) {
+      const hasDocs = update && typeof update === "object" && "documents" in update;
+      // 有摘要或有文档更新时都推送 SSE 事件
+      // human_review resume 后返回 approved 文档但没有摘要 → 必须推送，否则前端不更新文档状态
+      if (summary || hasDocs) {
         controller.enqueue(encodeSSE({ type: "node_output", node, data: update }));
-        await logAgentEvent(projectId, node, summary.input, summary.output, summary.toolCalls);
+        if (summary) {
+          await logAgentEvent(projectId, node, summary.input, summary.output, summary.toolCalls);
+        }
       }
 
       // === 文档更新 → 增量持久化 ===
