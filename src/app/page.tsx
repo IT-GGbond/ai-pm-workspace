@@ -119,7 +119,7 @@ export default async function Home() {
       </section>
 
       <footer className="border-t border-border/70 py-6 text-center text-[11px] text-muted-foreground">
-        为 AI 应用开发面试准备 · Next.js 16 + LangGraph.js 1.x + Vercel AI SDK
+          @2026 AIPM. All rights reserved.
       </footer>
     </div>
   );
