@@ -52,7 +52,7 @@ export async function reviewerNode(state: StateType) {
     try {
       const parsed = await structuredModel.invoke([
         new SystemMessage(
-          "你是产品文档审查员。默认通过，只有存在严重缺陷（空壳标题、核心章节缺失、关键数据自相矛盾）才驳回。宁可放过小的不完美，也不要因为细节反复重写——重写消耗大量 token。",
+          '你是产品文档审查员。默认通过，只有存在严重缺陷（空壳标题、核心章节缺失、关键数据自相矛盾）才驳回。宁可放过小的不完美，也不要因为细节反复重写——重写消耗大量 token。严格按以下 JSON 形状输出：{"passed":true,"issues":[]}。只返回 JSON 对象，不要 Markdown、标题、解释或代码围栏。',
         ),
         new HumanMessage(
           `检查文档「${doc.title}」质量:\n\n${

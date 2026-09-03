@@ -72,7 +72,7 @@ export async function supervisorNode(state: StateType) {
       if (structuredModel) {
         const parsed = await structuredModel.invoke([
           new SystemMessage(
-            `你是资深产品经理。当前日期: ${todayContext()}。分析用户需求，输出结构化任务列表。type: research/write_prd/write_persona/write_competitor/write_flow/write_roadmap。research 任务必须附带 englishQuery——用英文关键词描述搜索内容（10词内），Tavily 搜索引擎不支持中文。关键词中必须使用当前年份。`,
+            `你是资深产品经理。当前日期: ${todayContext()}。分析用户需求，输出结构化任务列表。允许的 type: research/write_prd/write_persona/write_competitor/write_flow/write_roadmap。research 任务必须附带 englishQuery——用英文关键词描述搜索内容（10词内），Tavily 搜索引擎不支持中文。关键词中必须使用当前年份。严格按以下 JSON 形状输出：{"tasks":[{"type":"research","description":"中文任务描述","englishQuery":"英文搜索词"}]}。非 research 任务省略 englishQuery。只返回 JSON 对象，不要 Markdown、标题、解释或代码围栏。`,
           ),
           new HumanMessage(`用户需求: "${state.userRequest}"`),
         ]);

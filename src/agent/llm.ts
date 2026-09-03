@@ -20,6 +20,7 @@
 //   利用这一点注入 DeepSeek thinking 关闭参数 → withStructuredOutput 正常工作
 
 import { ChatAnthropic } from "@langchain/anthropic";
+import { ChatOpenAI } from "@langchain/openai";
 import { ChatDeepSeek } from "@langchain/deepseek";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
@@ -28,13 +29,33 @@ import type { z } from "zod";
 // ===== API Key 检查 =====
 
 export function hasLLM(): boolean {
-  return Boolean(process.env.DEEPSEEK_API_KEY || process.env.ANTHROPIC_API_KEY);
+  return Boolean(
+    process.env.ZAI_API_KEY ||
+    process.env.DEEPSEEK_API_KEY ||
+    process.env.ANTHROPIC_API_KEY,
+  );
 }
 
 // ===== 创建 Chat Model（内部，不导出实例——避免跨请求共享状态） =====
 // 优先级: DeepSeek (便宜, 开发) > Anthropic (Demo/面试)
+// 优先级: 智谱 (国内) > DeepSeek (便宜, 开发) > Anthropic (Demo/面试)
 
 function createModel(): BaseChatModel | null {
+  // 优先使用智谱
+  if (process.env.ZAI_API_KEY) {
+    return new ChatOpenAI({
+      model: "glm-5.2",
+      temperature: 0.3,
+      maxTokens: 8912,
+      apiKey: process.env.ZAI_API_KEY,
+      modelKwargs: {
+        thinking: { type: "disabled" as const },
+      } as Record<string, unknown>,
+      configuration: {
+        baseURL: process.env.ZAI_BASE_URL,
+      },
+    });
+  }
   if (process.env.DEEPSEEK_API_KEY) {
     return new ChatDeepSeek({
       model: "deepseek-v4-flash",
@@ -98,6 +119,10 @@ export async function generate(
 export function createStructuredModel(schema: z.ZodTypeAny): any | null {
   const model = createModel();
   if (!model) return null;
+  // 智谱的 OpenAI 兼容接口对 tool calling 的兼容性不稳定，使用 JSON mode。
+  if (process.env.ZAI_API_KEY) {
+    return model.withStructuredOutput(schema, { method: "jsonMode" });
+  }
   return model.withStructuredOutput(schema);
 }
 
