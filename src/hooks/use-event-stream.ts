@@ -17,7 +17,7 @@
 // 参考: node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md
 //       服务端通过 ReadableStream + TextEncoder 流式返回 text/event-stream
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { SSEEvent } from "@/lib/sse";
 
 interface UseEventStreamOptions {
@@ -27,6 +27,7 @@ interface UseEventStreamOptions {
 
 export function useEventStream({ onEvent, onError }: UseEventStreamOptions) {
   const controllerRef = useRef<AbortController | null>(null);
+  const cleanupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 用 ref 保存最新回调，使 start/abort 引用恒定。
   // 若直接依赖 onEvent（其可能依赖 state），onEvent 一变 → start 重建 → 调用方 effect 重跑，
@@ -86,10 +87,39 @@ export function useEventStream({ onEvent, onError }: UseEventStreamOptions) {
       if ((err as Error).name !== "AbortError") {
         onErrorRef.current?.((err as Error).message || "网络连接失败");
       }
+    } finally {
+      if (controllerRef.current === controller) {
+        controllerRef.current = null;
+      }
     }
   }, []);
 
   const abort = useCallback(() => controllerRef.current?.abort(), []);
+
+  // 延迟清理以兼容 StrictMode 的开发期模拟卸载；真正离开页面时会释放连接。
+  useEffect(() => {
+    // 为了避免频繁 abort/start，延迟清理旧连接：
+    if (cleanupTimerRef.current !== null) {
+      clearTimeout(cleanupTimerRef.current);
+      cleanupTimerRef.current = null;
+    }
+    const handlePageHide = () => {
+      controllerRef.current?.abort();
+    };
+    // 页面离开时（刷新/关闭/切标签页/前进后退）触发，立即 abort 连接，避免浏览器继续请求。
+    window.addEventListener("pagehide", handlePageHide);
+
+    // 返回值相当于 componentWillUnmount，离开页面时触发
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
+      // 延迟清理，避免 StrictMode 下的双重 effect 误触发 abort/start
+      cleanupTimerRef.current = setTimeout(() => {
+        controllerRef.current?.abort();
+        controllerRef.current = null;
+        cleanupTimerRef.current = null;
+      }, 0);
+    };
+  }, []);
 
   return { start, abort };
 }
