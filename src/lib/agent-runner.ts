@@ -15,15 +15,9 @@ import type { ReadableStreamDefaultController } from "node:stream/web";
 import type { AgentDocument } from "@/agent/state";
 import { encodeSSE } from "./sse";
 import { logAgentEvent, upsertDocuments } from "./agent-logs";
+import { summarizeUpdate } from "./node-summary";
 
 export type SSEController = ReadableStreamDefaultController<Uint8Array>;
-
-/** 单个节点输出的摘要（用于 AgentLog 展示） */
-interface NodeSummary {
-  input: string;
-  output: string;
-  toolCalls?: { tool: string; query: string }[];
-}
 
 /**
  * 消费 LangGraph stream，边执行边推送 SSE 事件 + 落库
@@ -87,8 +81,6 @@ export async function runAgentStream(
   return { interrupted };
 }
 
-// ===== 工具函数 =====
-
 /** 取出 interrupt payload（我们传给 interrupt() 的对象） */
 function getInterruptPayload(update: unknown): {
   documentType?: string;
@@ -105,64 +97,4 @@ function getInterruptPayload(update: unknown): {
     return raw as { documentType?: string; documentTitle?: string; message?: string };
   }
   return undefined;
-}
-
-/** 把节点输出转成 AgentLog 摘要 */
-function summarizeUpdate(node: string, update: Record<string, unknown>): NodeSummary | null {
-  switch (node) {
-    case "supervisor": {
-      // 区分「拆解任务」(首次 planning) 与「同步进度」(writing 阶段每次调度)
-      if (Array.isArray(update.tasks)) {
-        // phase 被设置 = 首次拆解（case 1: planning → researching）
-        if (update.phase) {
-          return { input: "分析用户需求", output: `拆解 ${update.tasks.length} 个任务` };
-        }
-        // 否则是 writing 阶段的进度同步（case 3），不叫"拆解"
-        const doneCount = (update.tasks as Array<{ status?: string }>).filter(
-          (t) => t.status === "completed",
-        ).length;
-        const nextDoc = typeof update.currentDocument === "string" ? update.currentDocument : "";
-        return { input: "调度决策", output: `→ ${nextDoc || "同步进度"} (${doneCount}/${update.tasks.length} 完成)` };
-      }
-      if (update.nextAgent) {
-        return { input: "调度决策", output: `下一步 → ${String(update.nextAgent)}` };
-      }
-      return null;
-    }
-
-    case "research": {
-      const results = (Array.isArray(update.researchResults) ? update.researchResults : []) as Array<{
-        query: string;
-        sources: unknown[];
-      }>;
-      return {
-        input: "竞品搜索",
-        output: results.map(r => `「${r.query}」→ ${r.sources.length} 条结果`).join("；"),
-        toolCalls: results.map(r => ({ tool: "tavily_search", query: r.query })),
-      };
-    }
-
-    case "writer": {
-      const docs = (update.documents ?? {}) as Record<string, AgentDocument>;
-      const list = Object.values(docs);
-      return {
-        input: "撰写文档",
-        output: list.map(d => `「${d.title}」生成 ${d.sections.length} 个章节`).join("；"),
-      };
-    }
-
-    case "reviewer": {
-      const issues = (Array.isArray(update.reviewIssues) ? update.reviewIssues : []) as string[];
-      return {
-        input: "质量审查",
-        output: update.reviewPassed ? "✅ 审查通过" : `❌ ${issues.length} 个问题`,
-      };
-    }
-
-    case "human_review":
-      return null; // interrupt 已单独处理，不会走到这里
-
-    default:
-      return { input: node, output: JSON.stringify(update).slice(0, 200) };
-  }
 }

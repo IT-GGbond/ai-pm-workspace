@@ -5,7 +5,8 @@
 // 两种进入模式:
 //   1. create: 首页输入需求 → 本组件 POST /api/pm/analyze 发起 Agent 执行
 //      → 收到 done 事件拿到 projectId → router.replace 到 /workspace/:id
-//   2. existing: 直接访问 /workspace/:id → 初始数据来自 GET /api/pm/:id
+//   2. existing: 直接访问 /workspace/:id → workspace/[id]/page.tsx（Server 组件）
+//      → 在服务端直查 Prisma 把 Project+Documents+AgentLogs 作为 initialProject prop 传入
 //      → 用户在暂停点操作 ReviewBar → POST /api/pm/feedback 继续
 //
 // 布局:
@@ -20,7 +21,7 @@ import { useRouter } from "next/navigation";
 import { useEventStream } from "@/hooks/use-event-stream";
 import type { SSEEvent } from "@/lib/sse";
 import type { DocData, DocMap, InterruptInfo, LogEntry, RunMode } from "@/lib/workspace-types";
-import { AGENT_LABEL } from "@/lib/workspace-types";
+import { summarizeUpdate } from "@/lib/node-summary";
 import { DocNav } from "./doc-nav";
 import { DocumentView } from "./document-view";
 import { AIPanel } from "./ai-panel";
@@ -88,51 +89,45 @@ function toLogs(logs: ProjectDetail["agentLogs"]): LogEntry[] {
   }));
 }
 
-/** 节点输出 → 时间线可读摘要（与 server summarizeUpdate 对应，前端渲染用） */
-function formatOutput(node: string, data: Record<string, unknown>): string {
-  switch (node) {
-    case "supervisor": {
-      if (Array.isArray(data.tasks)) return `拆解 ${data.tasks.length} 个任务`;
-      if (data.nextAgent) return `调度下一步 → ${AGENT_LABEL[String(data.nextAgent)] ?? data.nextAgent}`;
-      return "更新计划";
-    }
-    case "research": {
-      const r = (Array.isArray(data.researchResults) ? data.researchResults : []) as {
-        query: string;
-        sources: unknown[];
-      }[];
-      if (r.length) return r.map(x => `「${x.query}」${x.sources.length} 条`).join(" · ");
-      return "搜索完成";
-    }
-    case "writer": {
-      const docs = (data.documents ?? {}) as Record<string, DocData>;
-      return Object.values(docs)
-        .map(d => `「${d.title}」${d.sections.length} 节`)
-        .join(" · ");
-    }
-    case "reviewer":
-      return data.reviewPassed ? "质量审查通过" : `质量问题 ${(data.reviewIssues as unknown[])?.length ?? 0} 项`;
-    default:
-      return "人工审阅节点完成";
-  }
-}
-
 export function WorkspaceShell({ projectId, initialRequest, initialProject }: WorkspaceShellProps) {
   const router = useRouter();
 
-  // === 会话状态 ===
+  // ═══════════════════════════════════════════════════════════════════
+  //  Hooks 速览（每个 state / ref 是干什么的、为什么这么选）
+  //
+  //  ■ 判据口诀：会驱动 UI / 会被 JSX 读到 → useState；
+  //    只在副作用/事件里做守卫、计数、跨闭包共享、又不想引起重渲染 → useRef。
+  //
+  //  state —— 都能直接映射到界面：
+  //    mode           运行状态机（idle/running/waiting_review/completed/error），驱动全局 UI
+  //    projectIdState 当前项目 id（feedback 续跑要带；create 收 done 后写入）
+  //    error          错误文案（error 态红条展示）
+  //    logs[]         Agent 时间线 = 【单一事实源】：日志流 + 管线状态都由它推导
+  //    docs           文档树（type→DocData），DocNav/DocumentView 读取
+  //    currentType    当前选中文档 type（决定中间栏渲染哪一篇）
+  //    interrupt      暂停信息；非 null = 正等人审阅 → 驱动 ReviewBar 出现
+  //
+  //  ref —— 不该触发渲染的数据：
+  //    busyRef    feedback 请求的防重入锁：async 期间为 true，挡掉双击/连点重复 resume
+  //    seqRef     ( + nextSeq() ) 单调递增日志序号：不用时间戳排序（不可靠），
+  //               每 push 一条 log 拿一个序号当顺序 & React key，保证顺序稳定
+  //    launchedRef create 模式 effect 只应跑一次的标记（下面 launch effect 用）
+  // ═══════════════════════════════════════════════════════════════════
+
   const [mode, setMode] = useState<RunMode>("idle");
   const [projectIdState, setProjectId] = useState<string | null>(projectId);
   const [error, setError] = useState<string | null>(null);
+  // 初值分两种来源：existing 模式由 Server 传入的 initialProject 重建（历史日志→done）
+  //                 create 模式为空数组，全靠 SSE 事件实时追加
   const [logs, setLogs] = useState<LogEntry[]>(() => (initialProject ? toLogs(initialProject.agentLogs) : []));
   const [docs, setDocs] = useState<DocMap>(() => (initialProject ? toDocMap(initialProject.documents) : {}));
   const [currentType, setCurrentType] = useState<string | null>(
     () => (initialProject?.documents[0]?.type ?? null),
   );
   const [interrupt, setInterrupt] = useState<InterruptInfo | null>(null);
-  const busyRef = useRef(false);
+  const busyRef = useRef(false); // 防重入锁：详情见上方速览
 
-  const seqRef = useRef(logs.length);
+  const seqRef = useRef(logs.length); // 序号从已有历史日志数续起，避免 key 冲突
   const nextSeq = () => ++seqRef.current;
 
   // === SSE 事件分发 ===
@@ -153,7 +148,13 @@ export function WorkspaceShell({ projectId, initialRequest, initialProject }: Wo
                 const toolCalls = Array.isArray(data.toolCalls)
                   ? (data.toolCalls as { tool: string; query: string }[])
                   : (data as { toolCalls?: { tool: string; query: string }[] }).toolCalls;
-                copy[i] = { ...copy[i], status: "done", output: formatOutput(evt.node!, data), toolCalls };
+                const summary = summarizeUpdate(evt.node!, data);
+                copy[i] = {
+                  ...copy[i],
+                  status: "done",
+                  output: summary ? `${summary.input} → ${summary.output}` : undefined,
+                  toolCalls: summary?.toolCalls ?? toolCalls,
+                };
                 break;
               }
             }
@@ -216,20 +217,35 @@ export function WorkspaceShell({ projectId, initialRequest, initialProject }: Wo
   });
 
   // === create 模式: 首次渲染自动发起 analyze ===
+  // 为什么放 useEffect 而不是直接调用 / 渲染期间调？
+  //   1) 它要在浏览器挂载后执行（组件函数体不能有副作用/网络请求）；
+  //   2) deps=[initialRequest, start]：start 恒等(useCallback[])，
+  //      所以这个 effect 只在挂载后依赖首次变化时触发一次。
+  // launchedRef 是「双保险」：React StrictMode 下 dev 会 mount→cleanup→remount，
+  // 没有它，首轮 analyze 会被误发第二次（第二次会重复建 Project / 跑一遍图）。
   const launchedRef = useRef(false);
   useEffect(() => {
-    if (!initialRequest || launchedRef.current) return;
+    if (!initialRequest || launchedRef.current) return; // 无需求（existing 模式）或已发过 → 跳过
     launchedRef.current = true;
-    setMode("running");
+    setMode("running"); // 状态机：idle → running
+    // 预置第一条 supervisor 日志（active）：让管线第一站立刻"亮起来"，
+    // 即使后端第一个 node_start 事件还在路上，UI 也不会空等
     setLogs(l => [...l, { id: `log-${nextSeq()}`, node: "supervisor", status: "active", at: seqRef.current }]);
-    start("/api/pm/analyze", { userRequest: initialRequest });
+    start("/api/pm/analyze", { userRequest: initialRequest }); // 建立 SSE 长连接，事件回由 onEvent 分发
   }, [initialRequest, start]);
 
   // === existing 模式: 暂停态恢复（刷新后无 interrupt 信息，用 DB 文档状态推断）===
+  // 为什么要这个 effect：刷新/直达时页面没有实时 interrupt 事件，
+  // 必须靠 initialProject（DB）反推出「上次停在哪篇等人审」，还原成 waiting_review。
+  // 完整原理见 docs/frontend-walkthrough.md 第 5.3 节。
   //
   // 本工作流是"逐篇文档 HITL": analyze 首轮只生成第一篇 PRD 就停在 human_review，
   // 其余文档在 DB 中根本不存在（不是 pending，是还没有记录）。
-  // 所以不能只看"已存在文档的状态"，中断点 = 最新一篇已生成(approved)的文档。
+  // 所以不能只看"已存在文档的状态"——
+  // 中断点 = 最新一篇状态为 review 的文档（生成完、正等人审阅），而不是：
+  //   · approved（那已是审过的，不应再弹一次）
+  //   · pending（那可能根本还没生成）
+  //   极端兜底才退回 pending。
   useEffect(() => {
     if (!initialProject) return;
 
