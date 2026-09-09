@@ -75,6 +75,9 @@ export async function POST(req: Request) {
         controller.enqueue(encodeSSE(event));
 
       try {
+        // 项目已创建，先把 id 发给前端，避免 Agent 执行期间断开后项目变成“无主项目”。
+        enqueue({ type: "started", projectId: project.id });
+
         // === 4. 启动 LangGraph 流式执行 ===
         // app.stream() 返回的是一个 AsyncGenerator，每次 yield 一个节点更新
         // 这和 ReadableStream 是"两个世界的流"：

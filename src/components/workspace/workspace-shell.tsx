@@ -17,7 +17,6 @@
 //   └─────────┴────────────────────────┴─────────────┘
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useEventStream } from "@/hooks/use-event-stream";
 import type { SSEEvent } from "@/lib/sse";
 import type { DocData, DocMap, InterruptInfo, LogEntry, RunMode } from "@/lib/workspace-types";
@@ -31,14 +30,14 @@ export interface ProjectDetail {
   id: string;
   name: string;
   description: string;
-  status: string;
+  status: string; // in_progress | completed
   createdAt: string;
   updatedAt: string;
   documents: {
     id: string;
     type: string;
     title: string;
-    status: string;
+    status: string; // pending | generating | review | approved
     updatedAt: string;
     sections: { title: string; content: string; order: number; status: string }[];
   }[];
@@ -90,8 +89,6 @@ function toLogs(logs: ProjectDetail["agentLogs"]): LogEntry[] {
 }
 
 export function WorkspaceShell({ projectId, initialRequest, initialProject }: WorkspaceShellProps) {
-  const router = useRouter();
-
   // ═══════════════════════════════════════════════════════════════════
   //  Hooks 速览（每个 state / ref 是干什么的、为什么这么选）
   //
@@ -134,6 +131,14 @@ export function WorkspaceShell({ projectId, initialRequest, initialProject }: Wo
   const onEvent = useCallback(
     (evt: SSEEvent) => {
       switch (evt.type) {
+        case "started": {
+          if (evt.projectId && !projectId) {
+            setProjectId(evt.projectId);
+            // 只更新地址，不重新挂载组件，避免正在进行的 SSE 被路由切换打断。
+            window.history.replaceState(null, "", `/workspace/${evt.projectId}`);
+          }
+          break;
+        }
         case "node_start": {
           setLogs(l => [...l, { id: `log-${nextSeq()}`, node: evt.node!, status: "active", at: seqRef.current }]);
           break;
@@ -190,10 +195,10 @@ export function WorkspaceShell({ projectId, initialRequest, initialProject }: Wo
         }
         case "done": {
           if (evt.projectId && !projectId) {
-            // create 模式: 拿到 projectId → 替换 URL，刷新后可恢复现场
+            // 兼容旧服务端：如果 started 事件因网络抖动丢失，仍在结束时补写 URL。
             setProjectId(evt.projectId);
             busyRef.current = false;
-            router.replace(`/workspace/${evt.projectId}`);
+            window.history.replaceState(null, "", `/workspace/${evt.projectId}`);
           }
           if (evt.status === "completed") setMode("completed");
           else if (evt.status === "waiting_review") setMode("waiting_review");
@@ -205,7 +210,7 @@ export function WorkspaceShell({ projectId, initialRequest, initialProject }: Wo
           break;
       }
     },
-    [currentType, projectId, router],
+    [currentType, projectId],
   );
 
   const { start } = useEventStream({

@@ -11,7 +11,7 @@ const encoder = new TextEncoder();
 
 /** SSE 事件统一结构 — type 区分事件种类 */
 export interface SSEEvent {
-  type: "node_start" | "node_output" | "interrupt" | "done" | "error";
+  type: "started" | "node_start" | "node_output" | "interrupt" | "done" | "error";
   node?: string;
   data?: unknown;
   message?: string;
