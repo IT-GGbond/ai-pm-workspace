@@ -9,6 +9,8 @@ import remarkGfm from "remark-gfm"; // GFM 插件: 让 | 语法表格按 <table>
 import type { Components } from "react-markdown";
 import { cn } from "@/lib/utils";
 
+
+// 自定义 Markdown 标签映射，升级为带 Tailwind 语义的标签
 const mdComponents: Components = {
   h1: ({ children, ...props }) => (
     <h1 {...props} className="mt-8 mb-3 text-2xl font-semibold tracking-tight first:mt-0">

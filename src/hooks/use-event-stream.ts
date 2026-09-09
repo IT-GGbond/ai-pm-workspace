@@ -57,17 +57,19 @@ export function useEventStream({ onEvent, onError }: UseEventStreamOptions) {
       }
 
       // === 按 SSE 帧分隔符 \n\n 逐帧解析 data: 行 ===
-      const reader = res.body.getReader();
+      const reader = res.body.getReader(); // ReadableStream 的读取器：每次拿到一个 Uint8Array 分块
       const decoder = new TextDecoder();
-      let buf = "";
+      let buf = ""; // 跨分块的缓冲：一帧可能被 TCP/HTTP 切到多次 read() 里
 
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
+        // stream:true 关键：中文等多字节字符可能被拆到相邻两个分块，
+        // 开着 stream 模式解码器会缓存未完成的字符、下一块到达时补全，避免乱码
         buf += decoder.decode(value, { stream: true });
 
-        const frames = buf.split("\n\n");
-        buf = frames.pop() ?? "";
+        const frames = buf.split("\n\n"); // SSE 帧以空行结束 → 用 "\n\n" 切帧
+        buf = frames.pop() ?? ""; // 最后一段多半是不完整的半帧（还没等来空行），留到下次拼接
         for (const frame of frames) {
           const dataLine = frame.split("\n").find((l) => l.startsWith("data:"));
           if (!dataLine) continue;
@@ -79,6 +81,8 @@ export function useEventStream({ onEvent, onError }: UseEventStreamOptions) {
         }
       }
     } catch (err) {
+      // AbortError = 我们主动调 controller.abort() 取消（换流/离开），
+      // 这是预期内的中断，不当作"网络错误"弹给用户；其余异常才走 onError
       if ((err as Error).name !== "AbortError") {
         onErrorRef.current?.((err as Error).message || "网络连接失败");
       }
